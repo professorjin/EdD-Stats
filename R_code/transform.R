@@ -1,4 +1,4 @@
-# transformation_explorer.R
+#this script transforms a variable and creates a new column of data
 
 # 1. Load Libraries (Only those needed for data manipulation)
 if (!require(dplyr)) {
