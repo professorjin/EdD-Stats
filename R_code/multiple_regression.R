@@ -1,3 +1,7 @@
+#This is the primary script to run the multiple regression. Here's what it will do:
+# Ask you to select a dataframe from a list
+# Ask you to select your dependent variable
+# Ask you to select your dependent variable
 
 
 # --- Function Definitions ---
