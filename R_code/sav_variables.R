@@ -1,3 +1,6 @@
+#This reports the variable code for a .sav file; e.g., it will tell you that
+# for a gender variable, it will tell you that 1=male and 2=female
+
 if (!require(haven)) {
   install.packages("haven")
 }
