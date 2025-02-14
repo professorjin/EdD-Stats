@@ -1,43 +1,81 @@
 #This is the primary script to run the multiple regression. Here's what it will do:
-# It will run a multiple regression using a pre-built model.
+# Ask you to select a dataframe from a list
+# Ask you to select your dependent variable
+# Ask you to select your dependent variable
+
 
 # --- Function Definitions ---
 
-# 1. Select Pre-built Model (NEW FUNCTION)
-select_model <- function() {
+# 1. Select Data Frame
+select_dataframe <- function() {
   available_objects <- ls(envir = .GlobalEnv)
-  model_objects <- available_objects[sapply(available_objects, function(x) {
+  data_frames <- available_objects[sapply(available_objects, function(x) {
     obj <- get(x, envir = .GlobalEnv)
-    inherits(obj, "lm")  # Check if the object is of class "lm"
+    is.data.frame(obj) || "tbl_df" %in% class(obj)
   })]
   
-  if (length(model_objects) == 0) {
-    stop("No linear models ('lm' objects) found in the environment.  Please build a model first using buildmodel.R.")
+  if (length(data_frames) == 0) {
+    stop("No data frames found in the environment.  Please load data first.")
   }
   
-  prompt_string <- paste("Select a pre-built model:\n",
-                         paste(seq_along(model_objects), model_objects, sep = ": ", collapse = "\n"),
+  prompt_string <- paste("Select a data frame:\n",
+                         paste(seq_along(data_frames), data_frames, sep = ": ", collapse = "\n"),
                          "\nEnter the number: ")
   
   while (TRUE) {
     selection <- readline(prompt = prompt_string)
     selection_num <- suppressWarnings(as.integer(selection))
     
-    if (!is.na(selection_num) && selection_num >= 1 && selection_num <= length(model_objects)) {
-      working_model <- get(model_objects[selection_num], envir = .GlobalEnv)
-      model_name <- model_objects[selection_num]
+    if (!is.na(selection_num) && selection_num >= 1 && selection_num <= length(data_frames)) {
+      working_data <- get(data_frames[selection_num], envir = .GlobalEnv)
+      data_file <- data_frames[selection_num]
       break
     } else {
-      message("Invalid selection. Please enter a number between 1 and ", length(model_objects))
+      message("Invalid selection. Please enter a number between 1 and", length(data_frames))
     }
   }
   
-  message("Selected model:", model_name, "\n")
-  return(working_model)
+  message("Selected data frame:", data_file, "\n")
+  return(list(data = working_data, name = data_file))
 }
 
+# 2. Select Variables
+select_variables <- function(working_data) {
+  variable_names <- names(working_data)
+  
+  # 2.1 Display available variables (TO CONSOLE ONLY)
+  message("Available variables:")
+  for (i in 1:ncol(working_data)) {
+    message(i, "-", names(working_data)[i])
+  }
+  # 2.2 Get dependent variable.
+  prompt_dep_var <- paste("Select the dependent variable:\n",
+                          paste(seq_along(variable_names), variable_names, sep = ": ", collapse = "\n"),
+                          "\nEnter the number: ")
+  dep_var_num <- as.integer(readline(prompt = prompt_dep_var))
+  # 2.3 Validate dependent variable selection
+  if (is.na(dep_var_num) || dep_var_num < 1 || dep_var_num > length(variable_names)) {
+    stop("Invalid dependent variable selection.")
+  }
+  # 2.4 Get independent variables.
+  prompt_ind_vars <- paste("Select the independent variables (comma-separated):\n",
+                           paste(seq_along(variable_names), variable_names, sep = ": ", collapse = "\n"),
+                           "\nEnter the numbers (comma-separated): ")
+  ind_vars_nums_str <- strsplit(readline(prompt = prompt_ind_vars), ",")[[1]]
+  ind_vars_nums <- as.integer(ind_vars_nums_str)
+  
+  # 2.5 Validate independent variable selection
+  if (any(is.na(ind_vars_nums)) || any(ind_vars_nums < 1) || any(ind_vars_nums > length(variable_names)) || any(ind_vars_nums == dep_var_num)) {
+    stop("Invalid independent variable selection.  Make sure numbers are valid and do not include the dependent variable.")
+  }
+  
+  dep_var <- names(working_data)[dep_var_num]
+  ind_vars <- names(working_data)[ind_vars_nums]
+  
+  return(list(dep_var = dep_var, ind_vars = ind_vars))
+}
 
-# 2. Create Output Directory (No change)
+# 3. Create Output Directory
 create_output_directory <- function() {
   current_time_pst <- with_tz(Sys.time(), "America/Los_Angeles")
   timestamp <- format(current_time_pst, "%y_%m_%d_%H_%M_%S")
@@ -50,22 +88,18 @@ create_output_directory <- function() {
   return(output_dir)
 }
 
-# 3. Perform Listwise Deletion (Modified to use model formula)
-perform_listwise_deletion <- function(data, model){
-  formula_vars <- all.vars(formula(model)) # Extract variables from the model *formula*
+# 4. Perform Listwise Deletion
+perform_listwise_deletion <- function(data, dep_var, ind_vars){
   n_rows_initial <- nrow(data)
-  cleaned_data <- na.omit(data[, formula_vars]) #use only the variables in the formula
+  cleaned_data <- na.omit(data[, c(dep_var, ind_vars)])
   n_rows_deleted <- n_rows_initial - nrow(cleaned_data)
   message("Number of rows deleted due to missing values:", n_rows_deleted, "\n")
   return (cleaned_data)
 }
 
-# 4. Create Scatterplots for Linearity Check (Modified to use model formula)
-create_scatterplots <- function(working_data, model, output_dir) { #removed dep_var and ind_vars
+# 5. Create Scatterplots for Linearity Check
+create_scatterplots <- function(working_data, dep_var, ind_vars, output_dir) {
   plot_list <- list()
-  model_formula <- formula(model)
-  dep_var <- all.vars(model_formula)[1]  # Extract dependent variable
-  ind_vars <- all.vars(model_formula)[-1] # Extract independent variables
   
   for (ind_var in ind_vars) {
     p <- ggplot(working_data, aes(x = .data[[ind_var]], y = .data[[dep_var]])) +
@@ -82,24 +116,61 @@ create_scatterplots <- function(working_data, model, output_dir) { #removed dep_
   message("Scatterplots saved to: ", scatter_plots_file)
 }
 
-# 5. Run All Stepwise Regression Methods (Removed - Not needed with pre-built model)
-# We don't need stepwise regression since we have a pre-built model.
-
-# 6. Run Regression Analysis (Modified to use pre-built model)
-run_regression_analysis <- function(working_data, working_model, output_dir) { #removed dep_var and ind_vars
+# 6. Run All Stepwise Regression Methods
+run_all_stepwise <- function(working_data, dep_var, ind_vars, working_formula) {
   
-  # 6.1 Open Output File
+  # Perform listwise deletion *before* model fitting
+  working_data <- perform_listwise_deletion(working_data, dep_var, ind_vars)
+  initial_model <- lm(working_formula, data = working_data)
+  n <- nrow(working_data)
+  
+  
+  # 6.1 P-value Based Stepwise (Detailed Output)
+  cat("\n--- P-value Based Stepwise Regression (Both Directions) ---\n")
+  p_value_model <- step(initial_model, direction = "both", trace = 1,
+                        scope = list(lower = ~1, upper = working_formula))
+  cat("\n--- Final Model Formula (P-value Based) ---\n")
+  print(formula(p_value_model))
+  
+  # 6.2 AIC Stepwise (Concise Output)
+  aic_model <- stepAIC(initial_model, direction = "both", trace = 0,
+                       scope = list(lower = ~1, upper = working_formula))
+  cat("\n--- Final Model Formula (AIC Based) ---\n")
+  print(formula(aic_model))
+  
+  # 6.3 BIC Stepwise (Concise Output)
+  bic_model <- step(initial_model, direction = "both", trace = 0,
+                    scope = list(lower = ~1, upper = working_formula), k = log(n))
+  cat("\n--- Final Model Formula (BIC Based) ---\n")
+  print(formula(bic_model))
+  cat("\n--- End Stepwise Regression Results ---\n\n")
+  
+  return(p_value_model) # Return the p-value based model
+}
+
+
+
+# 7. Run Regression Analysis (Now uses p-value stepwise model and cleaned data)
+run_regression_analysis <- function(working_data, dep_var, ind_vars, output_dir) {
+  
+  # 7.1 Open Output File
   output_file <- file.path(output_dir, paste0("regression_results.txt"))
   sink(output_file)
   
-  # 6.2 Output header
+  # 7.2 Output header
   readable_timestamp <- format(with_tz(Sys.time(), "America/Los_Angeles"), "%b %d, %H:%M:%S")
   cat("Regression Analysis Run:", readable_timestamp, "\n\n")
   
-  # 6.3  NO Construct formula - use model formula
-  # 6.4 NO Stepwise - using provided model
+  # 7.3 Construct *initial* formula (for stepwise scope)
+  formula_string <- paste(dep_var, "~", paste(ind_vars, collapse = " + "))
+  working_formula <- as.formula(formula_string)
+  #cat("Initial Model Formula:", formula_string, "\n\n")  # No longer needed
   
-  # 6.5 Output Results (using the provided model)
+  # 7.4 Run *all* stepwise regressions, get the p-value based final model
+  working_model <- run_all_stepwise(working_data, dep_var, ind_vars, working_formula)
+  
+  
+  # 7.5 Output Results (using the final model from p-value stepwise)
   cat("Model Summary:\n")
   print(summary(working_model))
   
@@ -124,14 +195,15 @@ run_regression_analysis <- function(working_data, working_model, output_dir) { #
     cat("\nVIF and Tolerance cannot be calculated with only an intercept.\n")
   }
   
+  
   cat("\n95% Confidence Intervals:\n")
   print(confint(working_model, level = 0.95))
   
   cat("\nData Summary (First 6 rows):\n")
   print(head(working_data))
   
-  # 6.6 Create ggplot2 Diagnostic Plots (using the provided model)
-  # 6.6.1 Residuals vs Fitted
+  # 7.6 Create ggplot2 Diagnostic Plots (using the final model)
+  # 7.6.1 Residuals vs Fitted
   model_data <- data.frame(
     Fitted = fitted(working_model),
     Residuals = resid(working_model),
@@ -149,7 +221,7 @@ run_regression_analysis <- function(working_data, working_model, output_dir) { #
     labs(title = "Residuals vs Fitted", x = "Fitted Values", y = "Residuals") +
     theme_bw()
   
-  # 6.6.2 P-P Plot
+  # 7.6.2 P-P Plot
   n <- length(resid(working_model))
   observed_p <- ppoints(n)[rank(resid(working_model))]
   theoretical_p <- pnorm(scale(resid(working_model)))
@@ -178,7 +250,7 @@ run_regression_analysis <- function(working_data, working_model, output_dir) { #
     coord_cartesian(xlim = c(0, 1), ylim = c(0, 1)) +
     theme_bw()
   
-  # 6.6.3 Histogram of Residuals
+  # 7.6.3 Histogram of Residuals
   p2 <- ggplot(data.frame(Residuals = resid(working_model)), aes(x = Residuals)) +
     geom_histogram(binwidth = function(x) 2 * IQR(x) / (length(x)^(1/3)),  # Freedman-Diaconis rule
                    fill = "lightblue", color = "black") +
@@ -186,32 +258,34 @@ run_regression_analysis <- function(working_data, working_model, output_dir) { #
     theme_bw()
   
   
-  # 6.6.4 Arrange and Save Diagnostic Plots
+  # 7.6.4 Arrange and Save Diagnostic Plots
   combined_plot <- grid.arrange(p1, p2, p3, ncol = 3)
   diagnostic_plots_file <- file.path(output_dir, paste0("diagnostic_plots.png"))
   ggsave(diagnostic_plots_file, combined_plot, width = 15, height = 5, dpi = 300)
   
-  # 6.7 Save the model object (No change - still useful)
+  # 7.7 Save the model object
   model_object_file <- file.path(output_dir, paste0("model_object.RData"))
-  save(working_model, file = model_object_file) #saves the selected model
+  save(working_model, file = model_object_file)
   
   message("Regression analysis complete. See '", output_file, "' for details.")
-  sink() # 6.8 Close output file
+  sink() # 7.8 Close output file
   return(working_model)
 }
 
-# 7. Detect and Display Outliers (Modified to use model)
-detect_outliers <- function(data, model, n = 10) { #removed dep_var, ind_vars
-  # 7.1 Fit the Linear Model (using pre-built model, data already listwise deleted)
-  data_deleted <- perform_listwise_deletion(data, model) #use perform_listwise_deletion
-  model <- lm(formula(model), data = data_deleted) #re-fit the model using the cleaned data
+# 8. Detect and Display Outliers (Modified from find_high_leverage)
+detect_outliers <- function(data, dep_var, ind_vars, n = 10) {
+  # 8.1 Fit the Linear Model (after listwise deletion)
+  data_deleted <- perform_listwise_deletion(data, dep_var, ind_vars)
+  formula_string <- paste(dep_var, "~", paste(ind_vars, collapse = " + "))
+  formula <- as.formula(formula_string)
+  model <- lm(formula, data = data_deleted)
   
-  # 7.2 Calculate Outlier Statistics
+  # 8.2 Calculate Outlier Statistics
   leverage_values <- hatvalues(model)
   standardized_residuals <- rstandard(model)
   cooks_d <- cooks.distance(model)
-  
-  # 7.3 Identify Outliers based on multiple criteria
+
+  # 8.3 Identify Outliers based on multiple criteria
   k <- length(model$coefficients) - 1  # Number of predictors
   n <- nrow(data_deleted)             # Number of observations after listwise deletion
   f_threshold <- qf(0.50, df1 = k + 1, df2 = n - k - 1)
@@ -223,7 +297,7 @@ detect_outliers <- function(data, model, n = 10) { #removed dep_var, ind_vars
   all_outlier_indices <- unique(c(outlier_indices_resid, outlier_indices_leverage, outlier_indices_cooks))
   
   
-  #7.4 Create Data Frame for Output
+  # 8.4 Create Data Frame for Output
   if (length(all_outlier_indices) > 0) {
     outlier_data <- data.frame(
       Row = all_outlier_indices
@@ -253,9 +327,7 @@ detect_outliers <- function(data, model, n = 10) { #removed dep_var, ind_vars
       outlier_data$Cooks_Distance = NA
       outlier_data$F_Value = NA # Add F_Value even if no Cook's outliers
     }
-    #get the formula for use in the next step
-    dep_var <- all.vars(formula(model))[1]
-    ind_vars <- all.vars(formula(model))[-1]
+    
     # Add the actual data values
     outlier_vars <- data_deleted[all_outlier_indices, c(dep_var, ind_vars), drop = FALSE]
     outlier_data <- cbind(outlier_data, outlier_vars)
@@ -266,60 +338,59 @@ detect_outliers <- function(data, model, n = 10) { #removed dep_var, ind_vars
   
 }
 
-# 8. Run Outlier Analysis (Modified to use model)
-run_outlier_analysis <- function(working_data, working_model, output_dir) { #removed dep_var and ind_vars
+
+# 9. Run Outlier Analysis (Combines detection and removal)
+run_outlier_analysis <- function(working_data, dep_var, ind_vars, output_dir) {
   
-  # 8.1 Open Output File
+  # 9.1 Open Output File
   output_file <- file.path(output_dir, "outlier_report.txt")
   sink(output_file)
   
   readable_timestamp <- format(with_tz(Sys.time(), "America/Los_Angeles"), "%b %d, %H:%M:%S")
   cat("Outlier Analysis Run:", readable_timestamp, "\n\n")
   
-  # 8.2 Detect Outliers
-  outlier_data <- detect_outliers(working_data, working_model) #pass the model
+  # 9.2 Detect Outliers
+  outlier_data <- detect_outliers(working_data, dep_var, ind_vars)
   
-  # 8.3 Display and Handle Outliers (Interactive)
+  # 9.3 Display and Handle Outliers (Interactive)
   if (nrow(outlier_data) > 0) { # Check if the data frame is not empty
     cat("\nPotential outliers found based on multiple criteria:\n\n")
     print(outlier_data)
     cat("\n")
     
-    # 8.3.1 Get user input for rows to remove
+    # 9.3.1 Get user input for rows to remove
     rows_to_remove_str <- readline(prompt = "Enter the row numbers of outliers to remove (comma-separated, or 'none'): ")
     
     if (tolower(rows_to_remove_str) != "none") {
       rows_to_remove <- as.integer(strsplit(rows_to_remove_str, ",")[[1]])
       
-      # 8.3.2 Validate user input
+      # 9.3.2 Validate user input
       if (any(is.na(rows_to_remove)) || any(!(rows_to_remove %in% outlier_data$Row)) ) {
         stop("Invalid row numbers entered.  Must be in the list of potential outliers.")
       }
-      # 8.3.3 Remove specified outliers, after listwise deletion
-      dep_var <- all.vars(formula(working_model))[1]
-      ind_vars <- all.vars(formula(working_model))[-1]
-      working_data_deleted <- perform_listwise_deletion(working_data, working_model) #pass model for variable selection
-      working_data_cleaned <- working_data_deleted[-rows_to_remove, ]
-      
+      # 9.3.3 Remove specified outliers
+      # Perform listwise deletion first, and then remove outliers.
+      working_data_deleted <- perform_listwise_deletion(working_data, dep_var, ind_vars)
+      working_data_cleaned <- working_data_deleted[-rows_to_remove, ] # Corrected outlier removal
       
       cat("\nRemoved rows:", paste(rows_to_remove, collapse = ", "), "\n")
     } else {
-      working_data_cleaned <- perform_listwise_deletion(working_data, working_model) # Keep all data (after listwise deletion)
+      working_data_cleaned <- perform_listwise_deletion(working_data, dep_var, ind_vars) # Keep all data (after listwise deletion)
       cat("\nNo outliers removed.\n")
     }
     
   } else {
     # No outliers found by *any* criteria
     cat("No outliers detected based on specified criteria.\n")
-    working_data_cleaned <-  perform_listwise_deletion(working_data, working_model) # No outliers, so cleaned data is after listwise deletion
+    working_data_cleaned <-  perform_listwise_deletion(working_data, dep_var, ind_vars) # No outliers, so cleaned data is after listwise deletion
   }
   
-  # 8.4 Save Cleaned Data
+  # 9.4 Save Cleaned Data
   cleaned_data_file <- file.path(output_dir, "cleaned_data.csv")
   write.csv(working_data_cleaned, file = cleaned_data_file, row.names = FALSE)
   cat("\nCleaned data saved to:", cleaned_data_file, "\n")
   
-  sink() # 8.5 Close the outlier report file
+  sink() # 9.5 Close the outlier report file
   message("Outlier analysis complete.  See '", output_file, "' for details and '", cleaned_data_file, "' for the cleaned data.")
   return(working_data_cleaned)
 }
@@ -328,7 +399,7 @@ run_outlier_analysis <- function(working_data, working_model, output_dir) { #rem
 
 # --- Main Script Flow ---
 
-# 9. Load Packages (No change)
+# 10. Load Packages
 packages <- c("car", "MASS", "ggplot2", "gridExtra", "here", "lubridate", "lmtest")
 for (pkg in packages) {
   if (!require(pkg, character.only = TRUE)) {
@@ -337,20 +408,26 @@ for (pkg in packages) {
   library(pkg, character.only = TRUE)
 }
 
-# 10. Select Pre-built Model (NEW - Calls the new function)
-working_model <- select_model()
+# 11. Select Data Frame
+data_info <- select_dataframe()
+working_data <- data_info$data
+data_file_name <- data_info$name
 
-# 11. Get the data from the model object
-working_data <- working_model$model
+# 12. Select Variables
+variable_info <- select_variables(working_data)
+dep_var <- variable_info$dep_var
+ind_vars <- variable_info$ind_vars
 
-# 12. Create Output Directory (No change)
+# 13. Create Output Directory
 output_dir <- create_output_directory()
 
-# 13. Run Outlier Analysis and Get Cleaned Data *FIRST* (Modified arguments)
-cleaned_data <- run_outlier_analysis(working_data, working_model, output_dir)
+# 14. Run Outlier Analysis and Get Cleaned Data *FIRST*
+cleaned_data <- run_outlier_analysis(working_data, dep_var, ind_vars, output_dir)
 
-# 14. Create Scatterplots (using original data, modified arguments)
-create_scatterplots(working_data, working_model, output_dir) # Use working_data and the selected model
+# 15. Create Scatterplots (using original data)
+create_scatterplots(working_data, dep_var, ind_vars, output_dir)
 
-# 15. Run Regression Analysis (using *CLEANED* data, modified arguments)
-working_model <- run_regression_analysis(cleaned_data, working_model, output_dir) # Use cleaned_data and model
+# 16. Run Regression Analysis (using *CLEANED* data)
+working_model <- run_regression_analysis(cleaned_data, dep_var, ind_vars, output_dir) # Use cleaned_data
+
+# Script ends here.  No re-run option.
