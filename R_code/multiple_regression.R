@@ -124,7 +124,6 @@ if (rows_to_remove_resid != "none") {
   if (any(is.na(rows_to_remove_resid)) || any(!(rows_to_remove_resid %in% 1:nrow(mr_cleaned_data)))) {
     stop("Invalid row numbers entered.")
   }
-  mr_cleaned_data <- mr_cleaned_data[-rows_to_remove_resid, ]
   capture.output(
     {
       cat("\nRemoved rows based on Standardized Residuals:", paste(rows_to_remove_resid, collapse = ", "), "\n")
@@ -132,6 +131,7 @@ if (rows_to_remove_resid != "none") {
     file = file.path(output_path, "multiple_regression_results.txt"),
     append = TRUE
   )
+  mr_cleaned_data <- mr_cleaned_data[-rows_to_remove_resid, ]
   mr_selected_lm <- lm(formula(mr_selected_lm), data = mr_cleaned_data) # Refit model after removing rows
 }
 
