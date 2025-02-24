@@ -1,3 +1,26 @@
+# List of packages to check and load
+packages_to_use <- c("tidyverse", "ggfortify", "processR")  # Add any other packages here
+
+# Loop through the package list
+for (package in packages_to_use) {
+  # Check if the package is installed
+  if (!requireNamespace(package, quietly = TRUE)) {
+    # Install the package if it's not installed
+    install.packages(package)
+  }
+  # Load the package
+  library(package, character.only = TRUE)
+}
+
+# Optional: Print a message confirming packages are loaded
+message(paste(c("The following packages are loaded:", packages_to_use), collapse = " "))
+
+# Now you can use functions from tidyverse, ggfortify, and processR
+# Example:
+# ggplot(data = your_data, aes(x = your_x_variable, y = your_y_variable)) + geom_point()
+# autoplot(your_time_series_object)
+# process(data = your_data, y = "your_dependent_variable", x = "your_independent_variable", m = "your_mediator", model = 4)
+
 library(kableExtra)
 library(tidyverse)
 library(interactions)
